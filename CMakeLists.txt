@@ -34,7 +34,12 @@ set(CMAKE_MODULE_PATH "${love_SOURCE_DIR}/extra/cmake" ${CMAKE_MODULE_PATH})
 # Needed for shared libs on Linux. (-fPIC).
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 17)
+
+if(APPLE)
+	message(WARNING "CMake is not an officially supported build system for love on Apple platforms.")
+	message(WARNING "Use the prebuilt .app or the xcode project in platform/xcode/ instead.")
+endif()
 
 if(MSVC)
 	set(LOVE_CONSOLE_EXE_NAME lovec)
@@ -48,11 +53,15 @@ else()
 	set(LOVE_TARGET_PLATFORM x86)
 endif()
 
-option(LOVE_JIT "Use LuaJIT" TRUE)
+if(APPLE)
+	option(LOVE_JIT "Use LuaJIT" FALSE)
+else()
+	option(LOVE_JIT "Use LuaJIT" TRUE)
+endif()
 
 if(LOVE_JIT)
 	if(APPLE)
-		message(FATAL_ERROR "JIT not supported yet on Mac. Please use -DLOVE_JIT=0.")
+		message(WARNING "JIT not supported yet on Mac.")
 	endif()
 	message(STATUS "LuaJIT: Enabled")
 else()
@@ -289,6 +298,9 @@ if (APPLE)
 	set(LOVE_SRC_COMMON ${LOVE_SRC_COMMON}
 		src/common/macosx.mm
 	)
+	set(LOVE_LINK_LIBRARIES ${LOVE_LINK_LIBRARIES} objc)
+	set(LOVE_LINK_LIBRARIES ${LOVE_LINK_LIBRARIES} "-framework CoreFoundation")
+	set(LOVE_LINK_LIBRARIES ${LOVE_LINK_LIBRARIES} "-framework AppKit")
 endif()
 
 source_group("common" FILES ${LOVE_SRC_COMMON})
@@ -363,6 +375,8 @@ set(LOVE_SRC_MODULE_DATA
 	src/modules/data/Compressor.h
 	src/modules/data/DataModule.cpp
 	src/modules/data/DataModule.h
+	src/modules/data/DataStream.cpp
+	src/modules/data/DataStream.h
 	src/modules/data/DataView.cpp
 	src/modules/data/DataView.h
 	src/modules/data/HashFunction.cpp
@@ -498,6 +512,8 @@ set(LOVE_SRC_MODULE_GRAPHICS_ROOT
 	src/modules/graphics/Font.h
 	src/modules/graphics/Graphics.cpp
 	src/modules/graphics/Graphics.h
+	src/modules/graphics/GraphicsReadback.cpp
+	src/modules/graphics/GraphicsReadback.h
 	src/modules/graphics/Mesh.cpp
 	src/modules/graphics/Mesh.h
 	src/modules/graphics/ParticleSystem.cpp
@@ -533,6 +549,8 @@ set(LOVE_SRC_MODULE_GRAPHICS_ROOT
 	src/modules/graphics/wrap_Font.h
 	src/modules/graphics/wrap_Graphics.cpp
 	src/modules/graphics/wrap_Graphics.h
+	src/modules/graphics/wrap_GraphicsReadback.cpp
+	src/modules/graphics/wrap_GraphicsReadback.h
 	src/modules/graphics/wrap_Mesh.cpp
 	src/modules/graphics/wrap_Mesh.h
 	src/modules/graphics/wrap_ParticleSystem.cpp
@@ -558,6 +576,8 @@ set(LOVE_SRC_MODULE_GRAPHICS_OPENGL
 	src/modules/graphics/opengl/FenceSync.h
 	src/modules/graphics/opengl/Graphics.cpp
 	src/modules/graphics/opengl/Graphics.h
+	src/modules/graphics/opengl/GraphicsReadback.cpp
+	src/modules/graphics/opengl/GraphicsReadback.h
 	src/modules/graphics/opengl/OpenGL.cpp
 	src/modules/graphics/opengl/OpenGL.h
 	src/modules/graphics/opengl/Shader.cpp
@@ -881,8 +901,6 @@ set(LOVE_SRC_MODULE_SOUND_ROOT
 set(LOVE_SRC_MODULE_SOUND_LULLABY
 	src/modules/sound/lullaby/FLACDecoder.cpp
 	src/modules/sound/lullaby/FLACDecoder.h
-	src/modules/sound/lullaby/GmeDecoder.cpp
-	src/modules/sound/lullaby/GmeDecoder.h
 	src/modules/sound/lullaby/ModPlugDecoder.cpp
 	src/modules/sound/lullaby/ModPlugDecoder.h
 	src/modules/sound/lullaby/MP3Decoder.h
@@ -1624,6 +1642,7 @@ if(APPLE)
 	set(LOVE_SRC_3P_PHYSFS ${LOVE_SRC_3P_PHYSFS}
 		src/libraries/physfs/physfs_platform_apple.m
 	)
+	set(LOVE_LINK_LIBRARIES ${LOVE_LINK_LIBRARIES} "-framework IOKit")
 endif()
 
 add_library(love_3p_physfs ${LOVE_SRC_3P_PHYSFS})
@@ -1744,6 +1763,7 @@ set(LOVE_LIB_SRC
 )
 
 include_directories(
+	BEFORE
 	src
 	src/libraries
 	src/libraries/box2D

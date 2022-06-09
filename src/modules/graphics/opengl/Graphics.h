@@ -106,7 +106,7 @@ public:
 	void setWireframe(bool enable) override;
 
 	PixelFormat getSizedFormat(PixelFormat format, bool rendertarget, bool readable) const override;
-	bool isPixelFormatSupported(PixelFormat format, int usage, bool sRGB = false) override;
+	bool isPixelFormatSupported(PixelFormat format, uint32 usage, bool sRGB = false) override;
 	Renderer getRenderer() const override;
 	bool usesGLSLES() const override;
 	RendererInfo getRendererInfo() const override;
@@ -141,6 +141,10 @@ private:
 	love::graphics::ShaderStage *newShaderStageInternal(ShaderStageType stage, const std::string &cachekey, const std::string &source, bool gles) override;
 	love::graphics::Shader *newShaderInternal(StrongRef<love::graphics::ShaderStage> stages[SHADERSTAGE_MAX_ENUM]) override;
 	love::graphics::StreamBuffer *newStreamBuffer(BufferUsage type, size_t size) override;
+
+	love::graphics::GraphicsReadback *newReadbackInternal(ReadbackMethod method, love::graphics::Buffer *buffer, size_t offset, size_t size, data::ByteData *dest, size_t destoffset) override;
+	love::graphics::GraphicsReadback *newReadbackInternal(ReadbackMethod method, love::graphics::Texture *texture, int slice, int mipmap, const Rect &rect, image::ImageData *dest, int destx, int desty) override;
+
 	void setRenderTargetsInternal(const RenderTargets &rts, int pixelw, int pixelh, bool hasSRGBtexture) override;
 	void initCapabilities() override;
 	void getAPIStats(int &shaderswitches) const override;
@@ -154,6 +158,8 @@ private:
 	GLuint getSystemBackbufferFBO() const;
 
 	void setDebug(bool enable);
+
+	uint32 computePixelFormatUsage(PixelFormat format, bool readable);
 
 	std::unordered_map<RenderTargets, GLuint, CachedFBOHasher> framebufferObjects;
 	bool windowHasStencil;
@@ -170,8 +176,8 @@ private:
 	// Only needed for buffer types that can be bound to shaders.
 	StrongRef<love::graphics::Buffer> defaultBuffers[BUFFERUSAGE_MAX_ENUM];
 
-	// [rendertarget][readable][computewrite][srgb]
-	OptionalBool supportedFormats[PIXELFORMAT_MAX_ENUM][2][2][2][2];
+	// [non-readable, readable]
+	uint32 pixelFormatUsage[PIXELFORMAT_MAX_ENUM][2];
 
 }; // Graphics
 

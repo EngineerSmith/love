@@ -420,13 +420,19 @@ Message *Event::convert(const SDL_Event &e)
 			}
 			else
 			{
-				auto *file = new love::filesystem::NativeFile(e.drop.file);
+				auto *file = new love::filesystem::NativeFile(e.drop.file, love::filesystem::File::MODE_CLOSED);
 				vargs.emplace_back(&love::filesystem::NativeFile::type, file);
 				msg = new Message("filedropped", vargs);
 				file->release();
 			}
 		}
 		SDL_free(e.drop.file);
+		break;
+	case SDL_DROPBEGIN:
+		msg = new Message("dropbegan");
+		break;
+	case SDL_DROPCOMPLETE:
+		msg = new Message("dropcompleted");
 		break;
 	case SDL_QUIT:
 	case SDL_APP_TERMINATING:

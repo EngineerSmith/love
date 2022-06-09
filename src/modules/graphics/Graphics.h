@@ -37,6 +37,7 @@
 #include "Shader.h"
 #include "Quad.h"
 #include "Mesh.h"
+#include "GraphicsReadback.h"
 #include "Deprecations.h"
 #include "renderstate.h"
 #include "math/Transform.h"
@@ -460,6 +461,12 @@ public:
 
 	Text *newText(Font *font, const std::vector<Font::ColoredString> &text = {});
 
+	data::ByteData *readbackBuffer(Buffer *buffer, size_t offset, size_t size, data::ByteData *dest, size_t destoffset);
+	GraphicsReadback *readbackBufferAsync(Buffer *buffer, size_t offset, size_t size, data::ByteData *dest, size_t destoffset);
+
+	image::ImageData *readbackTexture(Texture *texture, int slice, int mipmap, const Rect &rect, image::ImageData *dest, int destx, int desty);
+	GraphicsReadback *readbackTextureAsync(Texture *texture, int slice, int mipmap, const Rect &rect, image::ImageData *dest, int destx, int desty);
+
 	bool validateShader(bool gles, const std::vector<std::string> &stages, const Shader::CompileOptions &options, std::string &err);
 
 	/**
@@ -797,7 +804,7 @@ public:
 	/**
 	 * Gets whether the specified pixel format usage is supported.
 	 **/
-	virtual bool isPixelFormatSupported(PixelFormat format, int usage, bool sRGB = false) = 0;
+	virtual bool isPixelFormatSupported(PixelFormat format, uint32 usage, bool sRGB = false) = 0;
 
 	/**
 	 * Gets the renderer used by love.graphics.
@@ -855,6 +862,12 @@ public:
 	BatchedVertexData requestBatchedDraw(const BatchedDrawCommand &command);
 
 	static void flushBatchedDrawsGlobal();
+
+	Texture *getTemporaryTexture(PixelFormat format, int w, int h, int samples);
+	void releaseTemporaryTexture(Texture *texture);
+
+	Buffer *getTemporaryBuffer(size_t size, DataFormat format, uint32 usageflags, BufferDataUsage datausage);
+	void releaseTemporaryBuffer(Buffer *buffer);
 
 	void cleanupCachedShaderStage(ShaderStageType type, const std::string &cachekey);
 
@@ -954,6 +967,19 @@ protected:
 		}
 	};
 
+	struct TemporaryBuffer
+	{
+		Buffer *buffer;
+		size_t size;
+		int framesSinceUse;
+
+		TemporaryBuffer(Buffer *buf, size_t size)
+			: buffer(buf)
+			, size(size)
+			, framesSinceUse(-1)
+		{}
+	};
+
 	struct TemporaryTexture
 	{
 		Texture *texture;
@@ -961,7 +987,7 @@ protected:
 
 		TemporaryTexture(Texture *tex)
 			: texture(tex)
-			, framesSinceUse(0)
+			, framesSinceUse(-1)
 		{}
 	};
 
@@ -969,6 +995,9 @@ protected:
 	virtual ShaderStage *newShaderStageInternal(ShaderStageType stage, const std::string &cachekey, const std::string &source, bool gles) = 0;
 	virtual Shader *newShaderInternal(StrongRef<ShaderStage> stages[SHADERSTAGE_MAX_ENUM]) = 0;
 	virtual StreamBuffer *newStreamBuffer(BufferUsage type, size_t size) = 0;
+
+	virtual GraphicsReadback *newReadbackInternal(ReadbackMethod method, Buffer *buffer, size_t offset, size_t size, data::ByteData *dest, size_t destoffset) = 0;
+	virtual GraphicsReadback *newReadbackInternal(ReadbackMethod method, Texture *texture, int slice, int mipmap, const Rect &rect, image::ImageData *dest, int destx, int desty) = 0;
 
 	virtual bool dispatch(int x, int y, int z) = 0;
 
@@ -980,7 +1009,10 @@ protected:
 	void createQuadIndexBuffer();
 	void createFanIndexBuffer();
 
-	Texture *getTemporaryTexture(PixelFormat format, int w, int h, int samples);
+	void updateTemporaryResources();
+	void clearTemporaryResources();
+
+	void updatePendingReadbacks();
 
 	void restoreState(const DisplayState &s);
 	void restoreStateChecked(const DisplayState &s);
@@ -1003,6 +1035,7 @@ protected:
 	StrongRef<love::graphics::Font> defaultFont;
 
 	std::vector<ScreenshotInfo> pendingScreenshotCallbacks;
+	std::vector<StrongRef<GraphicsReadback>> pendingReadbacks;
 
 	BatchedDrawState batchedDrawState;
 
@@ -1014,6 +1047,7 @@ protected:
 	std::vector<DisplayState> states;
 	std::vector<StackType> stackTypeStack;
 
+	std::vector<TemporaryBuffer> temporaryBuffers;
 	std::vector<TemporaryTexture> temporaryTextures;
 
 	int renderTargetSwitchCount;
@@ -1028,7 +1062,7 @@ protected:
 	Deprecations deprecations;
 
 	static const size_t MAX_USER_STACK_DEPTH = 128;
-	static const int MAX_TEMPORARY_TEXTURE_UNUSED_FRAMES = 16;
+	static const int MAX_TEMPORARY_RESOURCE_UNUSED_FRAMES = 16;
 
 private:
 
