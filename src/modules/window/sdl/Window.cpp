@@ -44,6 +44,8 @@
 
 #if defined(LOVE_WINDOWS)
 #include <windows.h>
+#include <dwmapi.h>
+#include <VersionHelpers.h>
 #elif defined(LOVE_MACOS)
 #include "common/macos.h"
 #endif
@@ -52,10 +54,27 @@
 #define APIENTRY
 #endif
 
+#ifndef SDL_HINT_WINDOWS_DPI_SCALING
+#define SDL_HINT_WINDOWS_DPI_SCALING "SDL_WINDOWS_DPI_SCALING"
+#endif
+
 namespace love
 {
 namespace window
 {
+
+// See src/modules/window/Window.cpp.
+void setHighDPIAllowedImplementation(bool enable)
+{
+#if defined(LOVE_WINDOWS)
+	// Windows uses a different API than SDL_WINDOW_ALLOW_HIGHDPI.
+	// This must be set before the video subsystem is initialized.
+	SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, enable ? "1" : "0");
+#else
+	LOVE_UNUSED(enable);
+#endif
+}
+
 namespace sdl
 {
 
@@ -589,6 +608,7 @@ bool Window::setWindow(int width, int height, WindowSettings *settings)
 		 if (f.borderless)
 			 sdlflags |= SDL_WINDOW_BORDERLESS;
 
+		// Note: this flag is ignored on Windows.
 		 if (isHighDPIAllowed())
 			 sdlflags |= SDL_WINDOW_ALLOW_HIGHDPI;
 
@@ -1169,7 +1189,59 @@ bool Window::isMinimized() const
 void Window::swapBuffers()
 {
 	if (glcontext)
+	{
+#ifdef LOVE_WINDOWS
+		bool useDwmFlush = false;
+		int swapInterval = getVSync();
+
+		// https://github.com/love2d/love/issues/1628
+		// VSync can interact badly with Windows desktop composition (DWM) in windowed mode. DwmFlush can be used instead
+		// of vsync, but it's much less flexible so we're very conservative here with where it's used:
+		// - It won't work with exclusive or desktop fullscreen.
+		// - DWM refreshes don't always match the refresh rate of the monitor the window is in (or the requested swap
+		//   interval), so we only use it when they do match.
+		// - The user may force GL vsync, and DwmFlush shouldn't be used together with GL vsync.
+		if (!settings.fullscreen && swapInterval == 1)
+		{
+			// Desktop composition is always enabled in Windows 8+. But DwmIsCompositionEnabled won't always return true...
+			// (see DwmIsCompositionEnabled docs).
+			BOOL compositionEnabled = IsWindows8OrGreater();
+			if (compositionEnabled || (SUCCEEDED(DwmIsCompositionEnabled(&compositionEnabled)) && compositionEnabled))
+			{
+				DWM_TIMING_INFO info = {};
+				info.cbSize = sizeof(DWM_TIMING_INFO);
+				double dwmRefreshRate = 0;
+				if (SUCCEEDED(DwmGetCompositionTimingInfo(nullptr, &info)))
+					dwmRefreshRate = (double)info.rateRefresh.uiNumerator / (double)info.rateRefresh.uiDenominator;
+
+				SDL_DisplayMode dmode = {};
+				int displayindex = SDL_GetWindowDisplayIndex(window);
+
+				if (displayindex >= 0)
+					SDL_GetCurrentDisplayMode(displayindex, &dmode);
+
+				if (dmode.refresh_rate > 0 && dwmRefreshRate > 0 && (fabs(dmode.refresh_rate - dwmRefreshRate) < 2))
+				{
+					SDL_GL_SetSwapInterval(0);
+					if (SDL_GL_GetSwapInterval() == 0)
+						useDwmFlush = true;
+					else
+						SDL_GL_SetSwapInterval(swapInterval);
+				}
+			}
+		}
+#endif
+
 		SDL_GL_SwapWindow(window);
+
+#ifdef LOVE_WINDOWS
+		if (useDwmFlush)
+		{
+			DwmFlush();
+			SDL_GL_SetSwapInterval(swapInterval);
+		}
+#endif
+	}
 }
 
 bool Window::hasFocus() const
