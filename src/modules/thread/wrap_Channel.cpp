@@ -150,6 +150,20 @@ int w_Channel_performAtomic(lua_State *L)
 	return lua_gettop(L) - 1;
 }
 
+int w_Channel_lockMutex(lua_State* L)
+{
+	Channel* c = luax_checkchannel(L, 1);
+	c->lockMutex();
+	return 0;
+}
+
+int w_Channel_unlockMutex(lua_State* L)
+{
+	Channel *c = luax_checkchannel(L, 1);
+	c->unlockMutex();
+	return 0;
+}
+
 static const luaL_Reg w_Channel_functions[] =
 {
 	{ "push", w_Channel_push },
@@ -161,6 +175,8 @@ static const luaL_Reg w_Channel_functions[] =
 	{ "hasRead", w_Channel_hasRead },
 	{ "clear", w_Channel_clear },
 	{ "performAtomic", w_Channel_performAtomic },
+	{ "lockMutex", w_Channel_lockMutex },
+	{ "unlockMutex", w_Channel_unlockMutex },
 	{ 0, 0 }
 };
 
